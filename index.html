@@ -1,5 +1,116 @@
 <!doctype html>
 <html lang="en">
+  <style id="perf-fix">
+  /* Force scroll to always work — the critical fix */
+  html,body{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    height:auto!important;
+    overscroll-behavior:auto!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  /* GPU-accelerate heavy 3D layers so they don't block main thread */
+  #three-stage,.dust-field,.ambient-orb,#cineIntro,.mandala-layer{
+    transform:translateZ(0)!important;
+    will-change:transform,opacity!important;
+    contain:layout style paint!important;
+    backface-visibility:hidden!important;
+  }
+  /* Never let decorative layers block scroll events */
+  #three-stage,.dust-field,.ambient-orb,.live-ticker,.side-rail,.exit-intent,.audience-marquee{
+    pointer-events:none!important;
+  }
+  /* Re-enable clicks on interactive children inside those layers */
+  .live-ticker a,.side-rail a,.side-rail button,.exit-intent a,.exit-intent button{
+    pointer-events:auto!important;
+  }
+  /* Force-dismiss stuck loader overlays */
+  #loader.dismissed,#cineIntro.dismissed{display:none!important;}
+</style>
+
+<script id="perf-fix-js">
+(function(){
+  // 1. Auto-dismiss stuck loader/intro after 1.5s (visual is preserved, just made non-blocking)
+  setTimeout(function(){
+    ['loader','cineIntro'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el){
+        el.style.transition='opacity .4s ease';
+        el.style.opacity='0';
+        setTimeout(function(){el.classList.add('dismissed');},450);
+      }
+    });
+    document.documentElement.style.overflow='auto';
+    document.body.style.overflow='auto';
+  },1500);
+
+  // 2. Pause heavy animations during scroll (biggest freeze cause)
+  var scrollTimer=null;
+  var isScrolling=false;
+  var pausableLayers=['three-stage'];
+  window.addEventListener('scroll',function(){
+    if(!isScrolling){
+      isScrolling=true;
+      pausableLayers.forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.style.visibility='hidden';
+      });
+    }
+    clearTimeout(scrollTimer);
+    scrollTimer=setTimeout(function(){
+      isScrolling=false;
+      pausableLayers.forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.style.visibility='visible';
+      });
+    },150);
+  },{passive:true});
+
+  // 3. Throttle RAF loops to 30fps (halves CPU usage, visuals stay smooth)
+  var origRAF=window.requestAnimationFrame;
+  var lastTime=0;
+  window.requestAnimationFrame=function(cb){
+    var now=performance.now();
+    var wait=Math.max(0,33-(now-lastTime));
+    return setTimeout(function(){
+      lastTime=performance.now();
+      cb(lastTime);
+    },wait);
+  };
+
+  // 4. IntersectionObserver — pause off-screen 3D layers
+  if('IntersectionObserver' in window){
+    setTimeout(function(){
+      var heavy=document.querySelectorAll('#three-stage,.dust-field,.ambient-orb');
+      var io=new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          e.target.style.animationPlayState=e.isIntersecting?'running':'paused';
+          if(!e.isIntersecting)e.target.style.visibility='hidden';
+          else e.target.style.visibility='visible';
+        });
+      },{threshold:0.01});
+      heavy.forEach(function(el){io.observe(el);});
+    },2000);
+  }
+
+  // 5. Detect if browser is stuttering, escalate protection
+  var stutterCount=0;
+  var lastCheck=performance.now();
+  setInterval(function(){
+    var now=performance.now();
+    var gap=now-lastCheck;
+    lastCheck=now;
+    if(gap>500){ // Frame took >500ms = browser froze
+      stutterCount++;
+      if(stutterCount>=2){
+        // Emergency: reduce Three.js opacity to disable its heaviest rendering
+        var ts=document.getElementById('three-stage');
+        if(ts){ts.style.opacity='0.3';ts.style.filter='blur(2px)';}
+      }
+    }
+  },1000);
+})();
+</script>
 <style id="perf-fix">
   html,body{overflow-y:auto!important;overflow-x:hidden!important;height:auto!important;overscroll-behavior:auto!important;}
   #three-stage,#cineIntro,.dust-field,.ambient-orb,#loader{will-change:auto!important;}
