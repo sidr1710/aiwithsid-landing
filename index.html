@@ -1,5 +1,37 @@
 <!doctype html>
 <html lang="en">
+<style id="perf-fix">
+  html,body{overflow-y:auto!important;overflow-x:hidden!important;height:auto!important;overscroll-behavior:auto!important;}
+  #three-stage,#cineIntro,.dust-field,.ambient-orb,#loader{will-change:auto!important;}
+  #three-stage{pointer-events:none!important;}
+  @media (max-width:900px){
+    #three-stage,.dust-field,.ambient-orb{display:none!important;}
+  }
+</style>
+<script id="perf-fix-js">
+  // Force-dismiss stuck overlays after 1.2s
+  setTimeout(function(){
+    ['loader','cineIntro'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el){el.style.display='none';el.remove();}
+    });
+    document.documentElement.style.overflow='auto';
+    document.body.style.overflow='auto';
+  },1200);
+  // Remove heavy Three.js canvas after 5s to prevent freeze
+  setTimeout(function(){
+    var ts=document.getElementById('three-stage');
+    if(ts)ts.remove();
+    // Kill all requestAnimationFrame loops causing CPU freeze
+    var origRAF=window.requestAnimationFrame;
+    var rafCount=0;
+    window.requestAnimationFrame=function(cb){
+      rafCount++;
+      if(rafCount>100)return 0; // Throttle after 100 frames
+      return origRAF(cb);
+    };
+  },5000);
+</script>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
